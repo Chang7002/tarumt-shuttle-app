@@ -12,6 +12,14 @@ if (!empty($search)) {
 } else {
     $routes_result = $db->query("SELECT * FROM routes ORDER BY departure_time ASC");
 }
+
+// Array of fallback images if image_url is missing in database
+$default_images = [
+    'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=600&q=80',
+    'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80',
+    'https://images.unsplash.com/photo-1570125909517-53cb21c89ff2?auto=format&fit=crop&w=600&q=80'
+];
+$img_index = 0;
 ?>
 
 <div class="container mt-2">
@@ -34,10 +42,14 @@ if (!empty($search)) {
     <h5 class="fw-bold mb-3"><i class="bi bi-bus-front me-2 text-primary"></i>Available Routes</h5>
     <div class="row g-4">
         <?php if ($routes_result && $routes_result->num_rows > 0): ?>
-            <?php while($route = $routes_result->fetch_assoc()): ?>
+            <?php while($route = $routes_result->fetch_assoc()): 
+                // Choose image from DB or fallback cycle
+                $img_src = !empty($route['image_url']) ? $route['image_url'] : $default_images[$img_index % count($default_images)];
+                $img_index++;
+            ?>
                 <div class="col-md-4">
                     <div class="card border-0 shadow-sm h-100 rounded-3 overflow-hidden d-flex flex-column">
-                        <img src="<?= e($route['image_url']) ?>" class="card-img-top" alt="<?= e($route['route_name']) ?>" style="height: 180px; object-fit: cover;">
+                        <img src="<?= e($img_src) ?>" class="card-img-top" alt="<?= e($route['route_name']) ?>" style="height: 180px; object-fit: cover;">
                         <div class="card-body d-flex flex-column justify-content-between">
                             <div>
                                 <h6 class="fw-bold mb-1"><?= e($route['route_name']) ?></h6>

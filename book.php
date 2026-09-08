@@ -1,109 +1,128 @@
 <?php
-include __DIR__ . '/../includes/header.php';
-
+include __DIR__ . '/header.php';
 $db = Database::getConnection();
-$message = '';
-$selected_route = (int)($_GET['route_id'] ?? 0);
 
+$error = '';
+$success = '';
+
+// Get route ID from URL
+$route_id = isset($_GET['route_id']) ? (int)$_GET['route_id'] : 0;
+
+// Handle Form Submission (When clicking "Confirm Booking")
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verify_csrf_token($_POST['csrf_token'] ?? '')) {
-        $message = '<div class="alert alert-danger">Invalid request security token.</div>';
+    $csrf_token = $_POST['csrf_token'] ?? '';
+    
+    // Verify CSRF Token
+    if (!verify_csrf_token($csrf_token)) {
+        $error = "Invalid or expired security token. Please refresh and try again.";
     } else {
-        $route_id    = (int)$_POST['route_id'];
-        $name        = trim($_POST['passenger_name']);
-        $email       = filter_var(trim($_POST['passenger_email']), FILTER_VALIDATE_EMAIL);
+        $route_id = (int)$_POST['route_id'];
+        $passenger_name = trim($_POST['passenger_name']);
+        $passenger_email = trim($_POST['passenger_email']);
         $travel_date = $_POST['travel_date'];
-        $seats       = (int)$_POST['tickets_booked'];
+        $tickets_booked = (int)$_POST['tickets_booked'];
 
-        if (!$email || empty($name) || $seats < 1 || $seats > 5 || empty($travel_date)) {
-            $message = '<div class="alert alert-warning">Please fill in all fields correctly (Max 5 seats).</div>';
+        if (empty($passenger_name) || empty($passenger_email) || empty($travel_date) || $tickets_booked < 1) {
+            $error = "Please fill in all required fields properly.";
         } else {
-            try {
-                // Begin Atomic Transaction
+            // Fetch route details
+            $stmt = $db->prepare("SELECT price, available_seats FROM routes WHERE id = ?");
+            $stmt->bind_param("i", $route_id);
+            $stmt->execute();
+            $route = $stmt->get_result()->fetch_assoc();
+
+            if (!$route) {
+                $error = "Selected route does not exist.";
+            } elseif ($route['available_seats'] < $tickets_booked) {
+                $error = "Not enough available seats for this route.";
+            } else {
+                // Calculate total price and generate reference code
+                $total_price = $route['price'] * $tickets_booked;
+                $booking_ref = 'SHUTTLE-' . strtoupper(substr(md5(uniqid((string)rand(), true)), 0, 6));
+
+                // Start database transaction
                 $db->begin_transaction();
+                try {
+                    // Insert booking
+                    $insert = $db->prepare("INSERT INTO bookings (booking_reference, route_id, passenger_name, passenger_email, travel_date, tickets_booked, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                    $insert->bind_param("sisssid", $booking_ref, $route_id, $passenger_name, $passenger_email, $travel_date, $tickets_booked, $total_price);
+                    $insert->execute();
 
-                // Lock row for update to prevent race conditions during high load
-                $stmt = $db->prepare("SELECT price, available_seats FROM routes WHERE id = ? FOR UPDATE");
-                $stmt->bind_param("i", $route_id);
-                $stmt->execute();
-                $route = $stmt->get_result()->fetch_assoc();
-
-                if ($route && $route['available_seats'] >= $seats) {
-                    $total_price = $route['price'] * $seats;
-                    $ref_code = 'TKT-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
-
-                    // Insert Booking
-                    $ins = $db->prepare("INSERT INTO bookings (booking_reference, route_id, passenger_name, passenger_email, tickets_booked, total_price, travel_date) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $ins->bind_param("sissids", $ref_code, $route_id, $name, $email, $seats, $total_price, $travel_date);
-                    $ins->execute();
-
-                    // Update Available Seats
-                    $upd = $db->prepare("UPDATE routes SET available_seats = available_seats - ? WHERE id = ?");
-                    $upd->bind_param("ii", $seats, $route_id);
-                    $upd->execute();
+                    // Deduct available seats
+                    $update = $db->prepare("UPDATE routes SET available_seats = available_seats - ? WHERE id = ?");
+                    $update->bind_param("ii", $tickets_booked, $route_id);
+                    $update->execute();
 
                     $db->commit();
-                    $message = "<div class='alert alert-success'>Booking Confirmed! Ref: <strong>" . e($ref_code) . "</strong>. <a href='history.php' class='alert-link'>View History</a></div>";
-                } else {
+                    $success = "Booking successful! Your reference ID is: <strong>" . e($booking_ref) . "</strong>";
+                } catch (Exception $e) {
                     $db->rollback();
-                    $message = '<div class="alert alert-danger">Insufficient seats remaining for this route.</div>';
+                    $error = "Failed to process booking. Error: " . $e->getMessage();
                 }
-            } catch (Exception $ex) {
-                $db->rollback();
-                error_log("Transaction Failed: " . $ex->getMessage());
-                $message = '<div class="alert alert-danger">System error processing transaction. Please try again.</div>';
             }
         }
     }
 }
 
-$routes = $db->query("SELECT id, route_name, price, available_seats FROM routes WHERE available_seats > 0 ORDER BY departure_time ASC");
+// Fetch all available routes for selector
+$routes_list = $db->query("SELECT * FROM routes ORDER BY route_name ASC");
 ?>
 
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm rounded-3">
-                <div class="card-body p-4">
-                    <h4 class="card-title fw-bold text-center mb-4">Reserve Your Seat</h4>
-                    <?= $message ?>
-                    <form action="book.php" method="POST">
-                        <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
-                        
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Select Route</label>
-                            <select name="route_id" class="form-select" required>
-                                <?php while($r = $routes->fetch_assoc()): ?>
-                                    <option value="<?= $r['id'] ?>" <?= $selected_route === (int)$r['id'] ? 'selected' : '' ?>>
-                                        <?= e($r['route_name']) ?> - RM<?= number_format((float)$r['price'], 2) ?> (<?= $r['available_seats'] ?> left)
-                                    </option>
-                                <?php endwhile; ?>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Full Name</label>
-                            <input type="text" name="passenger_name" class="form-control" placeholder="Alex Tan" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-semibold">Student Email</label>
-                            <input type="email" name="passenger_email" class="form-control" placeholder="student@tarc.edu.my" required>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-semibold">Travel Date</label>
-                                <input type="date" name="travel_date" class="form-control" value="<?= date('Y-m-d') ?>" min="<?= date('Y-m-d') ?>" required>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label fw-semibold">Seats (Max 5)</label>
-                                <input type="number" name="tickets_booked" class="form-control" min="1" max="5" value="1" required>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold mt-2">Confirm Reservation</button>
-                    </form>
+<div class="container mt-2" style="max-width: 600px;">
+    <div class="card border-0 shadow-sm rounded-3 p-4">
+        <h4 class="fw-bold mb-3"><i class="bi bi-ticket-perforated text-primary me-2"></i>Book Shuttle Ticket</h4>
+
+        <?php if ($error): ?>
+            <div class="alert alert-danger py-2 small"><?= e($error) ?></div>
+        <?php endif; ?>
+
+        <?php if ($success): ?>
+            <div class="alert alert-success py-2 small"><?= $success ?></div>
+            <a href="history.php" class="btn btn-outline-primary w-100 fw-semibold mt-2">View My Booking History</a>
+        <?php else: ?>
+
+        <form method="POST" action="book.php">
+            <!-- CSRF Protection Field -->
+            <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Select Route</label>
+                <select name="route_id" class="form-select" required>
+                    <option value="">-- Choose Route --</option>
+                    <?php while($r = $routes_list->fetch_assoc()): ?>
+                        <option value="<?= $r['id'] ?>" <?= $r['id'] == $route_id ? 'selected' : '' ?>>
+                            <?= e($r['route_name']) ?> (RM<?= number_format((float)$r['price'], 2) ?>)
+                        </option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Passenger Full Name</label>
+                <input type="text" name="passenger_name" class="form-control" placeholder="e.g. John Doe" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Email Address</label>
+                <input type="email" name="passenger_email" class="form-control" placeholder="student@tarumt.edu.my" required>
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Travel Date</label>
+                    <input type="date" name="travel_date" class="form-control" min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">Number of Seats</label>
+                    <input type="number" name="tickets_booked" class="form-control" value="1" min="1" max="5" required>
                 </div>
             </div>
-        </div>
+
+            <button type="submit" class="btn btn-primary w-100 fw-bold py-2 mt-2">Confirm Booking</button>
+        </form>
+
+        <?php endif; ?>
     </div>
 </div>
 
-<?php include __DIR__ . '/../includes/footer.php'; ?>
+<?php include __DIR__ . '/footer.php'; ?>

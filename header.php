@@ -1,13 +1,9 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/database.php';
 
 $node_info = get_ec2_metadata();
-$current_page = basename($_SERVER['PHP_SELF']);
+$current_page = basename($_SERVER['PHP_SELF'] ?? 'index.php');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -58,7 +54,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <?php endif; ?>
 
                 <span class="badge rounded-pill node-info-badge text-white px-3 py-2 ms-2">
-                    <i class="bi bi-cpu me-1"></i><?= e($node_info['instance_id']) ?> (<?= e($node_info['az']) ?>)
+                    <i class="bi bi-cpu me-1"></i><?= e($node_info['instance_id'] ?? 'Node') ?> (<?= e($node_info['az'] ?? 'Zone') ?>)
                 </span>
             </div>
         </div>

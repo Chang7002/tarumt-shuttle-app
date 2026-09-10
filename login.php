@@ -4,12 +4,15 @@ require_once __DIR__ . '/database.php';
 
 $error = '';
 
-// Handle form submission BEFORE rendering any HTML
+// 1. Fetch/Initialize CSRF token FIRST
+$csrf_token = generate_csrf_token();
+
+// 2. Process POST Request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submitted_token = $_POST['csrf_token'] ?? '';
 
     if (!verify_csrf_token($submitted_token)) {
-        $error = "Invalid security token. Please refresh and try again.";
+        $error = "Invalid security token. Please clear your cookies and try again.";
     } else {
         $email = trim($_POST['email'] ?? '');
         $password = trim($_POST['password'] ?? '');
@@ -23,12 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($user = $result->fetch_assoc()) {
                 if (password_verify($password, $user['password'])) {
-                    // Only regenerate session ID upon successful auth
+                    // Regenerate session ID and retain user data
                     session_regenerate_id(true);
 
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['user_name'] = $user['name'];
                     $_SESSION['role'] = $user['role'];
+
+                    // Clear CSRF token after successful login
+                    unset($_SESSION['csrf_token']);
 
                     header("Location: index.php");
                     exit();
@@ -41,10 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Generate/fetch CSRF token AFTER POST verification check
-$csrf_token = generate_csrf_token();
-
-// Render HTML header after all processing/redirects
+// 3. Render Page View
 include __DIR__ . '/header.php';
 ?>
 

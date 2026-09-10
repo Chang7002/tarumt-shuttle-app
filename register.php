@@ -1,44 +1,63 @@
 <?php
-include __DIR__ . '/header.php';
-$db = Database::getConnection();
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/database.php';
 
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name = trim($_POST['name'] ?? '');
-    $email = trim($_POST['email'] ?? '');
-    $password = trim($_POST['password'] ?? '');
-    $confirm_password = trim($_POST['confirm_password'] ?? '');
-
-    if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
-        $error = "All fields are required.";
-    } elseif ($password !== $confirm_password) {
-        $error = "Passwords do not match.";
+    $token = $_POST['csrf_token'] ?? '';
+    
+    if (!verify_csrf_token($token)) {
+        $error = "Invalid security token. Please refresh the page and try again.";
     } else {
-        // Check if email already exists
-        $check_stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
-        $check_stmt->bind_param("s", $email);
-        $check_stmt->execute();
-        
-        if ($check_stmt->get_result()->num_rows > 0) {
-            $error = "Email address is already registered.";
+        $name = trim($_POST['name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $password = trim($_POST['password'] ?? '');
+        $confirm_password = trim($_POST['confirm_password'] ?? '');
+
+        if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
+            $error = "All fields are required.";
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $error = "Please enter a valid email address.";
+        } elseif ($password !== $confirm_password) {
+            $error = "Passwords do not match.";
+        } elseif (strlen($password) < 6) {
+            $error = "Password must be at least 6 characters long.";
         } else {
-            // Hash password and insert
-            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $role = 'user';
+            $db = Database::getConnection();
 
-            $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
+            // Check if email already exists
+            $check_stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+            $check_stmt->bind_param("s", $email);
+            $check_stmt->execute();
+            $check_stmt->store_result();
 
-            if ($stmt->execute()) {
-                $success = "Registration successful! You can now login.";
+            if ($check_stmt->num_rows > 0) {
+                $error = "Email address is already registered.";
             } else {
-                $error = "Failed to create account. Please try again.";
+                $check_stmt->close();
+
+                // Hash password and insert
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $role = 'user';
+
+                $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
+                $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
+
+                if ($stmt->execute()) {
+                    $success = "Registration successful! You can now login.";
+                } else {
+                    $error = "Failed to create account. Please try again.";
+                }
+                $stmt->close();
             }
         }
     }
 }
+
+// Render HTML Header
+include __DIR__ . '/header.php';
 ?>
 
 <div class="container mt-4" style="max-width: 500px;">
@@ -62,6 +81,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="register.php">
+                <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
+
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-secondary">Full Name</label>
                     <div class="input-group">

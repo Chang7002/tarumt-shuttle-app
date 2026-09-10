@@ -30,16 +30,29 @@ $routes = $db->query("SELECT * FROM routes ORDER BY departure_time ASC");
                 </thead>
                 <tbody>
                     <?php if ($routes && $routes->num_rows > 0): ?>
-                        <?php while($r = $routes->fetch_assoc()): ?>
+                        <?php while($r = $routes->fetch_assoc()): 
+                            $seats = (int)($r['available_seats'] ?? 0);
+                            $badge_class = $seats > 5 ? 'bg-success' : ($seats > 0 ? 'bg-warning text-dark' : 'bg-danger');
+                        ?>
                         <tr>
-                            <td class="ps-4 fw-bold text-primary"><i class="bi bi-clock me-1"></i><?= date('H:i', strtotime($r['departure_time'])) ?></td>
+                            <td class="ps-4 fw-bold text-primary">
+                                <i class="bi bi-clock me-1"></i><?= date('H:i', strtotime($r['departure_time'])) ?>
+                            </td>
                             <td class="fw-semibold"><?= e($r['route_name']) ?></td>
                             <td><?= e($r['origin']) ?></td>
                             <td><?= e($r['destination']) ?></td>
                             <td>RM<?= number_format((float)$r['price'], 2) ?></td>
-                            <td><span class="badge bg-<?= $r['available_seats'] > 5 ? 'secondary' : 'warning text-dark' ?>"><?= $r['available_seats'] ?></span></td>
+                            <td>
+                                <span class="badge <?= $badge_class ?>">
+                                    <?= $seats > 0 ? $seats . ' left' : 'Sold Out' ?>
+                                </span>
+                            </td>
                             <td class="pe-4 text-end">
-                                <a href="book.php?route_id=<?= $r['id'] ?>" class="btn btn-sm btn-outline-primary fw-semibold px-3">Reserve</a>
+                                <?php if ($seats > 0): ?>
+                                    <a href="book.php?route_id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-primary fw-semibold px-3">Reserve</a>
+                                <?php else: ?>
+                                    <button class="btn btn-sm btn-secondary fw-semibold px-3" disabled>Full</button>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <?php endwhile; ?>

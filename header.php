@@ -1,23 +1,15 @@
 <?php
+// Initialize session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/functions.php';
 
 $node_info = get_ec2_metadata();
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
-<?php if (isset($_SESSION['user_id'])): ?>
-    <a href="index.php">Search Routes</a>
-    <a href="my_bookings.php">My Bookings</a>
-    
-    <?php if ($_SESSION['role'] === 'admin'): ?>
-        <a href="admin_dashboard.php" style="color: red; font-weight: bold;">Admin Panel</a>
-    <?php endif; ?>
-    
-    <a href="logout.php">Logout (<?php echo $_SESSION['user_name']; ?>)</a>
-<?php else: ?>
-    <a href="login.php">Login</a>
-    <a href="register.php">Register</a>
-<?php endif; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -46,11 +38,28 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                 <li class="nav-item"><a class="nav-link <?= $current_page==='index.php'?'active':'' ?>" href="index.php">Home</a></li>
                 <li class="nav-item"><a class="nav-link <?= $current_page==='schedule.php'?'active':'' ?>" href="schedule.php">Schedule</a></li>
-                <li class="nav-item"><a class="nav-link <?= $current_page==='history.php'?'active':'' ?>" href="history.php">Booking History</a></li>
+                
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <li class="nav-item"><a class="nav-link <?= $current_page==='history.php'?'active':'' ?>" href="history.php">My Bookings</a></li>
+                    
+                    <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
+                        <li class="nav-item"><a class="nav-link text-warning fw-bold <?= $current_page==='admin_dashboard.php'?'active':'' ?>" href="admin_dashboard.php"><i class="bi bi-shield-lock-fill me-1"></i>Admin Panel</a></li>
+                    <?php endif; ?>
+                <?php endif; ?>
             </ul>
+
             <div class="d-flex align-items-center gap-2">
                 <a href="book.php" class="btn btn-light text-primary fw-semibold btn-sm">Book Ticket</a>
-                <span class="badge rounded-pill node-info-badge text-white px-3 py-2">
+
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <span class="text-white small me-1">Hi, <?= e($_SESSION['user_name'] ?? 'User') ?></span>
+                    <a href="logout.php" class="btn btn-outline-light btn-sm">Logout</a>
+                <?php else: ?>
+                    <a href="login.php" class="btn btn-outline-light btn-sm">Login</a>
+                    <a href="register.php" class="btn btn-warning btn-sm fw-semibold">Register</a>
+                <?php endif; ?>
+
+                <span class="badge rounded-pill node-info-badge text-white px-3 py-2 ms-2">
                     <i class="bi bi-cpu me-1"></i><?= e($node_info['instance_id']) ?> (<?= e($node_info['az']) ?>)
                 </span>
             </div>

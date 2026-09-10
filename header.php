@@ -5,6 +5,19 @@ require_once __DIR__ . '/functions.php';
 $node_info = get_ec2_metadata();
 $current_page = basename($_SERVER['PHP_SELF']);
 ?>
+<?php if (isset($_SESSION['user_id'])): ?>
+    <a href="index.php">Search Routes</a>
+    <a href="my_bookings.php">My Bookings</a>
+    
+    <?php if ($_SESSION['role'] === 'admin'): ?>
+        <a href="admin_dashboard.php" style="color: red; font-weight: bold;">Admin Panel</a>
+    <?php endif; ?>
+    
+    <a href="logout.php">Logout (<?php echo $_SESSION['user_name']; ?>)</a>
+<?php else: ?>
+    <a href="login.php">Login</a>
+    <a href="register.php">Register</a>
+<?php endif; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

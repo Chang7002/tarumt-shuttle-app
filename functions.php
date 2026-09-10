@@ -9,6 +9,9 @@ if (session_status() === PHP_SESSION_NONE) {
  * Generate CSRF Token for Secure Forms
  */
 function generate_csrf_token(): string {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
@@ -19,12 +22,18 @@ function generate_csrf_token(): string {
  * Validate CSRF Token
  */
 function verify_csrf_token(?string $token): bool {
-    if (empty($token) || empty($_SESSION['csrf_token'])) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    
+    $session_token = $_SESSION['csrf_token'] ?? '';
+    
+    if (empty($token) || empty($session_token)) {
         return false;
     }
-    return hash_equals($_SESSION['csrf_token'], $token);
+    
+    return hash_equals($session_token, trim($token));
 }
-
 /**
  * Fetch EC2 Instance Metadata (IMDSv2 Compatible with IMDSv1 Fallback)
  */

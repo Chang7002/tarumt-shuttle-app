@@ -63,14 +63,14 @@ function get_ec2_metadata(): array {
     }
 
     return [
-        'instance_id' => $instance_id ?: 'LocalHostNode',
-        'az'          => $az ?: 'local-az-1'
+        'instance_id' => $instance_id !== false && !empty($instance_id) ? $instance_id : 'LocalHostNode',
+        'az'          => $az !== false && !empty($az) ? $az : 'local-az-1'
     ];
 }
 
 /**
- * Helper to escape output (Handles null safely)
+ * Helper to escape output safely for strings, integers, floats, and null
  */
-function e(?string $value): string {
-    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+function e(mixed $value): string {
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }

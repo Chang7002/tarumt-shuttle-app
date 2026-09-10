@@ -1,67 +1,44 @@
 <?php
-// ALWAYS require functions.php FIRST
-require_once __DIR__ . '/functions.php';
-require_once __DIR__ . '/database.php';
-
-// Generate/retrieve token before handling POST logic
-$csrf_token = generate_csrf_token();
+include __DIR__ . '/header.php';
+$db = Database::getConnection();
 
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    
-    if (!verify_csrf_token($token)) {
-        $error = "Invalid security token. Please refresh the page and try again.";
+    $name = trim($_POST['name'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
+    $confirm_password = trim($_POST['confirm_password'] ?? '');
+
+    if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
+        $error = "All fields are required.";
+    } elseif ($password !== $confirm_password) {
+        $error = "Passwords do not match.";
     } else {
-        $name = trim($_POST['name'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $password = trim($_POST['password'] ?? '');
-        $confirm_password = trim($_POST['confirm_password'] ?? '');
-
-        if (empty($name) || empty($email) || empty($password) || empty($confirm_password)) {
-            $error = "All fields are required.";
-        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $error = "Please enter a valid email address.";
-        } elseif ($password !== $confirm_password) {
-            $error = "Passwords do not match.";
-        } elseif (strlen($password) < 6) {
-            $error = "Password must be at least 6 characters long.";
+        // Check if email already exists
+        $check_stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
+        $check_stmt->bind_param("s", $email);
+        $check_stmt->execute();
+        
+        if ($check_stmt->get_result()->num_rows > 0) {
+            $error = "Email address is already registered.";
         } else {
-            $db = Database::getConnection();
+            // Hash password and insert
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+            $role = 'user';
 
-            // Check if email already exists
-            $check_stmt = $db->prepare("SELECT id FROM users WHERE email = ?");
-            $check_stmt->bind_param("s", $email);
-            $check_stmt->execute();
-            $check_stmt->store_result();
+            $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
 
-            if ($check_stmt->num_rows > 0) {
-                $error = "Email address is already registered.";
+            if ($stmt->execute()) {
+                $success = "Registration successful! You can now login.";
             } else {
-                $check_stmt->close();
-
-                // Hash password and insert
-                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-                $role = 'user';
-
-                $stmt = $db->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
-                $stmt->bind_param("ssss", $name, $email, $hashed_password, $role);
-
-                if ($stmt->execute()) {
-                    $success = "Registration successful! You can now login.";
-                } else {
-                    $error = "Failed to create account. Please try again.";
-                }
-                $stmt->close();
+                $error = "Failed to create account. Please try again.";
             }
         }
     }
 }
-
-// Render HTML Header
-include __DIR__ . '/header.php';
 ?>
 
 <div class="container mt-4" style="max-width: 500px;">
@@ -85,8 +62,6 @@ include __DIR__ . '/header.php';
             <?php endif; ?>
 
             <form method="POST" action="register.php">
-                <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
-
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-secondary">Full Name</label>
                     <div class="input-group">

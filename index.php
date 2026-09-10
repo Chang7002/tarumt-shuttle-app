@@ -13,7 +13,7 @@ if (!empty($search)) {
     $routes_result = $db->query("SELECT * FROM routes ORDER BY departure_time ASC");
 }
 
-// Array of fallback images if image_url is missing in database
+// Fallback images if image_url is missing in database
 $default_images = [
     'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=600&q=80',
     'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80',
@@ -33,8 +33,11 @@ $img_index = 0;
             <div class="col-md-9">
                 <input type="text" name="search" class="form-control" placeholder="Search by route name, origin, or destination..." value="<?= e($search) ?>">
             </div>
-            <div class="col-md-3">
-                <button type="submit" class="btn btn-primary w-100 fw-semibold"><i class="bi bi-search me-1"></i> Search Routes</button>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary w-100 fw-semibold"><i class="bi bi-search me-1"></i> Search</button>
+                <?php if (!empty($search)): ?>
+                    <a href="index.php" class="btn btn-outline-secondary" title="Reset Search"><i class="bi bi-x-circle"></i></a>
+                <?php endif; ?>
             </div>
         </form>
     </div>
@@ -43,9 +46,9 @@ $img_index = 0;
     <div class="row g-4">
         <?php if ($routes_result && $routes_result->num_rows > 0): ?>
             <?php while($route = $routes_result->fetch_assoc()): 
-                // Choose image from DB or fallback cycle
                 $img_src = !empty($route['image_url']) ? $route['image_url'] : $default_images[$img_index % count($default_images)];
                 $img_index++;
+                $seats_left = (int)($route['available_seats'] ?? 0);
             ?>
                 <div class="col-md-4">
                     <div class="card border-0 shadow-sm h-100 rounded-3 overflow-hidden d-flex flex-column">
@@ -57,10 +60,14 @@ $img_index = 0;
                                 <p class="small text-secondary mb-3">
                                     <i class="bi bi-clock me-1"></i>Departs <?= date('H:i', strtotime($route['departure_time'])) ?> · 
                                     <strong>RM<?= number_format((float)$route['price'], 2) ?></strong> · 
-                                    <span class="badge bg-<?= $route['available_seats'] > 0 ? 'success' : 'danger' ?>"><?= $route['available_seats'] ?> seats left</span>
+                                    <span class="badge bg-<?= $seats_left > 0 ? 'success' : 'danger' ?>"><?= $seats_left ?> seats left</span>
                                 </p>
                             </div>
-                            <a href="book.php?route_id=<?= $route['id'] ?>" class="btn btn-outline-primary w-100 fw-semibold">Book Ticket</a>
+                            <?php if ($seats_left > 0): ?>
+                                <a href="book.php?route_id=<?= (int)$route['id'] ?>" class="btn btn-outline-primary w-100 fw-semibold">Book Ticket</a>
+                            <?php else: ?>
+                                <button class="btn btn-secondary w-100 fw-semibold" disabled>Sold Out</button>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

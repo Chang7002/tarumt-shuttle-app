@@ -1,6 +1,10 @@
 <?php
+// ALWAYS require functions.php FIRST
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/database.php';
+
+// Generate/retrieve token before handling POST logic
+$csrf_token = generate_csrf_token();
 
 $error = '';
 $success = '';

@@ -1,4 +1,17 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php?error=login_required");
+    exit();
+}
+
+require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/functions.php';
+?>
+<?php
 include __DIR__ . '/header.php';
 $db = Database::getConnection();
 

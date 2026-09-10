@@ -2,16 +2,19 @@
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/database.php';
 
+// Ensure CSRF token is primed in session on page load
+$csrf_token = generate_csrf_token();
 $error = '';
 
-// Handle URL query parameters for alerts
+// Handle URL status messages
 if (isset($_GET['error']) && $_GET['error'] === 'login_required') {
     $error = "Please sign in to view your reservation history.";
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $token = $_POST['csrf_token'] ?? '';
-    if (!verify_csrf_token($token)) {
+    $submitted_token = $_POST['csrf_token'] ?? '';
+
+    if (!verify_csrf_token($submitted_token)) {
         $error = "Invalid security token. Please refresh and try again.";
     } else {
         $email = trim($_POST['email'] ?? '');
@@ -26,14 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($user = $result->fetch_assoc()) {
                 if (password_verify($password, $user['password'])) {
-                    // Prevent Session Fixation
+                    // Prevent session fixation
                     session_regenerate_id(true);
 
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['user_name'] = $user['name'];
                     $_SESSION['role'] = $user['role'];
-
-                    session_write_close();
 
                     header("Location: index.php");
                     exit();
@@ -46,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Render HTML Header
+// Render HTML
 include __DIR__ . '/header.php';
 ?>
 
@@ -65,7 +66,7 @@ include __DIR__ . '/header.php';
             <?php endif; ?>
 
             <form method="POST" action="login.php">
-                <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
+                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
 
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-secondary">Email Address</label>

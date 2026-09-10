@@ -1,5 +1,4 @@
 <?php
-// Initialize session if not already started
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
@@ -40,8 +39,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <li class="nav-item"><a class="nav-link <?= $current_page==='schedule.php'?'active':'' ?>" href="schedule.php">Schedule</a></li>
                 
                 <?php if (isset($_SESSION['user_id'])): ?>
-                    <li class="nav-item"><a class="nav-link <?= $current_page==='history.php'?'active':'' ?>" href="history.php">My Bookings</a></li>
-                    
+                    <li class="nav-item"><a class="nav-link <?= $current_page==='history.php'?'active':'' ?>" href="history.php">Booking History</a></li>
                     <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'admin'): ?>
                         <li class="nav-item"><a class="nav-link text-warning fw-bold <?= $current_page==='admin_dashboard.php'?'active':'' ?>" href="admin_dashboard.php"><i class="bi bi-shield-lock-fill me-1"></i>Admin Panel</a></li>
                     <?php endif; ?>

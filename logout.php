@@ -1,21 +1,32 @@
 <?php
+require_once __DIR__ . '/functions.php';
+
+// Ensure session is started before destroying
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Perform session cleanup
-$_SESSION = array();
+// Unset all session variables
+$_SESSION = [];
 
+// Delete the session cookie if it exists
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000,
-        $params["path"], $params["domain"],
-        $params["secure"], $params["httponly"]
+    setcookie(
+        session_name(), 
+        '', 
+        time() - 42000,
+        $params["path"], 
+        $params["domain"],
+        $params["secure"], 
+        $params["httponly"]
     );
 }
 
+// Destroy session data on server
 session_destroy();
 
+// Render navigation header
 include __DIR__ . '/header.php';
 ?>
 
@@ -52,7 +63,9 @@ include __DIR__ . '/header.php';
     
     const interval = setInterval(() => {
         seconds--;
-        if (countdownEl) countdownEl.textContent = seconds;
+        if (countdownEl) {
+            countdownEl.textContent = seconds;
+        }
         if (seconds <= 0) {
             clearInterval(interval);
             window.location.href = 'login.php?status=logged_out';

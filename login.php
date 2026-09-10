@@ -1,35 +1,53 @@
 <?php
-include __DIR__ . '/header.php';
-$db = Database::getConnection();
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/database.php';
 
 $error = '';
+
+// Handle URL query parameters for alerts
+if (isset($_GET['error']) && $_GET['error'] === 'login_required') {
+    $error = "Please sign in to view your reservation history.";
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email'] ?? '');
-    $password = trim($_POST['password'] ?? '');
-
-    if (!empty($email) && !empty($password)) {
-        $stmt = $db->prepare("SELECT id, name, password, role FROM users WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        if ($user = $result->fetch_assoc()) {
-            if (password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_name'] = $user['name'];
-                $_SESSION['role'] = $user['role'];
-
-                session_write_close();
-
-                header("Location: index.php");
-                exit();
-            }
-        }
-        $error = "Invalid email address or password.";
+    $token = $_POST['csrf_token'] ?? '';
+    if (!verify_csrf_token($token)) {
+        $error = "Invalid security token. Please refresh and try again.";
     } else {
-        $error = "Please fill in all fields.";
+        $email = trim($_POST['email'] ?? '');
+        $password = trim($_POST['password'] ?? '');
+
+        if (!empty($email) && !empty($password)) {
+            $db = Database::getConnection();
+            $stmt = $db->prepare("SELECT id, name, password, role FROM users WHERE email = ?");
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($user = $result->fetch_assoc()) {
+                if (password_verify($password, $user['password'])) {
+                    // Prevent Session Fixation
+                    session_regenerate_id(true);
+
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['user_name'] = $user['name'];
+                    $_SESSION['role'] = $user['role'];
+
+                    session_write_close();
+
+                    header("Location: index.php");
+                    exit();
+                }
+            }
+            $error = "Invalid email address or password.";
+        } else {
+            $error = "Please fill in all fields.";
+        }
     }
 }
+
+// Render HTML Header
+include __DIR__ . '/header.php';
 ?>
 
 <div class="container mt-4" style="max-width: 500px;">
@@ -47,11 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="login.php">
+                <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
+
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-secondary">Email Address</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light border-end-0"><i class="bi bi-envelope text-muted"></i></span>
-                        <input type="email" name="email" class="form-control border-start-0 bg-light" placeholder="student@tarumt.edu.my" required>
+                        <input type="email" name="email" class="form-control border-start-0 bg-light" placeholder="student@tarumt.edu.my" value="<?= e($_POST['email'] ?? '') ?>" required>
                     </div>
                 </div>
 

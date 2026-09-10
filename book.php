@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// 1. Require user login
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php?error=login_required");
     exit();
@@ -10,131 +11,107 @@ if (!isset($_SESSION['user_id'])) {
 
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/functions.php';
-?>
-<?php
-include __DIR__ . '/header.php';
-$db = Database::getConnection();
 
+$db = Database::getConnection();
 $error = '';
 $success = '';
 
-// Get route ID from URL
-$route_id = isset($_GET['route_id']) ? (int)$_GET['route_id'] : 0;
+// 2. Generate CSRF token if it doesn't exist
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
-// Handle Form Submission (When clicking "Confirm Booking")
+// 3. Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrf_token = $_POST['csrf_token'] ?? '';
-    
-    // Verify CSRF Token
-    if (!verify_csrf_token($csrf_token)) {
+    // Validate CSRF token
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
         $error = "Invalid or expired security token. Please refresh and try again.";
     } else {
-        $route_id = (int)$_POST['route_id'];
-        $passenger_name = trim($_POST['passenger_name']);
-        $passenger_email = trim($_POST['passenger_email']);
-        $travel_date = $_POST['travel_date'];
-        $tickets_booked = (int)$_POST['tickets_booked'];
+        $route_id = $_POST['route_id'] ?? '';
+        $passenger_name = trim($_POST['passenger_name'] ?? '');
+        $email = trim($_POST['email'] ?? '');
+        $travel_date = $_POST['travel_date'] ?? '';
+        $seats = (int)($_POST['seats'] ?? 1);
+        $user_id = $_SESSION['user_id'];
 
-        if (empty($passenger_name) || empty($passenger_email) || empty($travel_date) || $tickets_booked < 1) {
-            $error = "Please fill in all required fields properly.";
+        if (empty($route_id) || empty($passenger_name) || empty($email) || empty($travel_date)) {
+            $error = "Please fill in all required fields.";
         } else {
-            // Fetch route details
-            $stmt = $db->prepare("SELECT price, available_seats FROM routes WHERE id = ?");
-            $stmt->bind_param("i", $route_id);
-            $stmt->execute();
-            $route = $stmt->get_result()->fetch_assoc();
+            // Insert booking query
+            $stmt = $db->prepare("INSERT INTO bookings (user_id, route_id, passenger_name, email, travel_date, seats) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("iisssi", $user_id, $route_id, $passenger_name, $email, $travel_date, $seats);
 
-            if (!$route) {
-                $error = "Selected route does not exist.";
-            } elseif ($route['available_seats'] < $tickets_booked) {
-                $error = "Not enough available seats for this route.";
+            if ($stmt->execute()) {
+                // Regenerate token after successful submission
+                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+                
+                header("Location: history.php?success=booking_complete");
+                exit();
             } else {
-                // Calculate total price and generate reference code
-                $total_price = $route['price'] * $tickets_booked;
-                $booking_ref = 'SHUTTLE-' . strtoupper(substr(md5(uniqid((string)rand(), true)), 0, 6));
-
-                // Start database transaction
-                $db->begin_transaction();
-                try {
-                    // Insert booking
-                    $insert = $db->prepare("INSERT INTO bookings (booking_reference, route_id, passenger_name, passenger_email, travel_date, tickets_booked, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $insert->bind_param("sisssid", $booking_ref, $route_id, $passenger_name, $passenger_email, $travel_date, $tickets_booked, $total_price);
-                    $insert->execute();
-
-                    // Deduct available seats
-                    $update = $db->prepare("UPDATE routes SET available_seats = available_seats - ? WHERE id = ?");
-                    $update->bind_param("ii", $tickets_booked, $route_id);
-                    $update->execute();
-
-                    $db->commit();
-                    $success = "Booking successful! Your reference ID is: <strong>" . e($booking_ref) . "</strong>";
-                } catch (Exception $e) {
-                    $db->rollback();
-                    $error = "Failed to process booking. Error: " . $e->getMessage();
-                }
+                $error = "Failed to process booking. Please try again.";
             }
         }
     }
 }
 
-// Fetch all available routes for selector
-$routes_list = $db->query("SELECT * FROM routes ORDER BY route_name ASC");
+// Fetch available routes for the dropdown selector
+$routes = $db->query("SELECT * FROM routes WHERE available_seats > 0 ORDER BY route_name ASC");
+$selected_route_id = $_GET['route_id'] ?? '';
 ?>
 
-<div class="container mt-2" style="max-width: 600px;">
-    <div class="card border-0 shadow-sm rounded-3 p-4">
-        <h4 class="fw-bold mb-3"><i class="bi bi-ticket-perforated text-primary me-2"></i>Book Shuttle Ticket</h4>
+<?php include __DIR__ . '/header.php'; ?>
 
-        <?php if ($error): ?>
-            <div class="alert alert-danger py-2 small"><?= e($error) ?></div>
-        <?php endif; ?>
+<div class="container mt-4" style="max-width: 600px;">
+    <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
+        <div class="card-body p-4">
+            <h4 class="fw-bold mb-3"><i class="bi bi-ticket-perforated text-primary me-2"></i>Book Shuttle Ticket</h4>
 
-        <?php if ($success): ?>
-            <div class="alert alert-success py-2 small"><?= $success ?></div>
-            <a href="history.php" class="btn btn-outline-primary w-100 fw-semibold mt-2">View My Booking History</a>
-        <?php else: ?>
-
-        <form method="POST" action="book.php">
-            <!-- CSRF Protection Field -->
-            <input type="hidden" name="csrf_token" value="<?= e(generate_csrf_token()) ?>">
-
-            <div class="mb-3">
-                <label class="form-label fw-semibold small">Select Route</label>
-                <select name="route_id" class="form-select" required>
-                    <option value="">-- Choose Route --</option>
-                    <?php while($r = $routes_list->fetch_assoc()): ?>
-                        <option value="<?= $r['id'] ?>" <?= $r['id'] == $route_id ? 'selected' : '' ?>>
-                            <?= e($r['route_name']) ?> (RM<?= number_format((float)$r['price'], 2) ?>)
-                        </option>
-                    <?php endwhile; ?>
-                </select>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label fw-semibold small">Passenger Full Name</label>
-                <input type="text" name="passenger_name" class="form-control" placeholder="e.g. John Doe" required>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label fw-semibold small">Email Address</label>
-                <input type="email" name="passenger_email" class="form-control" placeholder="student@tarumt.edu.my" required>
-            </div>
-
-            <div class="row g-2 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small">Travel Date</label>
-                    <input type="date" name="travel_date" class="form-control" min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d') ?>" required>
+            <?php if (!empty($error)): ?>
+                <div class="alert alert-danger py-2 small" role="alert">
+                    <?= e($error) ?>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold small">Number of Seats</label>
-                    <input type="number" name="tickets_booked" class="form-control" value="1" min="1" max="5" required>
+            <?php endif; ?>
+
+            <form method="POST" action="book.php">
+                <!-- CRITICAL: Hidden CSRF Token Field -->
+                <input type="hidden" name="csrf_token" value="<?= e($_SESSION['csrf_token']) ?>">
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Select Route</label>
+                    <select name="route_id" class="form-select" required>
+                        <option value="">-- Choose Route --</option>
+                        <?php while ($r = $routes->fetch_assoc()): ?>
+                            <option value="<?= $r['id'] ?>" <?= $selected_route_id == $r['id'] ? 'selected' : '' ?>>
+                                <?= e($r['route_name']) ?> (<?= e($r['origin']) ?> → <?= e($r['destination']) ?>) - RM<?= number_format((float)$r['price'], 2) ?>
+                            </option>
+                        <?php endwhile; ?>
+                    </select>
                 </div>
-            </div>
 
-            <button type="submit" class="btn btn-primary w-100 fw-bold py-2 mt-2">Confirm Booking</button>
-        </form>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Passenger Full Name</label>
+                    <input type="text" name="passenger_name" class="form-control" value="<?= e($_SESSION['user_name'] ?? '') ?>" placeholder="e.g. John Doe" required>
+                </div>
 
-        <?php endif; ?>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-secondary">Email Address</label>
+                    <input type="email" name="email" class="form-control" value="<?= e($_POST['email'] ?? '') ?>" placeholder="student@tarumt.edu.my" required>
+                </div>
+
+                <div class="row g-2 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold text-secondary">Travel Date</label>
+                        <input type="date" name="travel_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-semibold text-secondary">Number of Seats</label>
+                        <input type="number" name="seats" class="form-control" value="1" min="1" max="5" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 fw-semibold py-2">Confirm Booking</button>
+            </form>
+        </div>
     </div>
 </div>
 

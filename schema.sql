@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Insert a default Admin account
 INSERT INTO users (name, email, password, role) 
-VALUES ('System Admin', 'admin@tarumt.edu.my', '$2y$10$YourHashedPasswordHere', 'admin')
+VALUES ('System Admin', 'admin@tarumt.edu.my', 'admin123', 'admin')
 ON DUPLICATE KEY UPDATE id=id;
 
 -- Seed Data

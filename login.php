@@ -2,15 +2,9 @@
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/database.php';
 
-// Ensure CSRF token is primed in session on page load
-$csrf_token = generate_csrf_token();
 $error = '';
 
-// Handle URL status messages
-if (isset($_GET['error']) && $_GET['error'] === 'login_required') {
-    $error = "Please sign in to view your reservation history.";
-}
-
+// Handle form submission BEFORE rendering any HTML
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $submitted_token = $_POST['csrf_token'] ?? '';
 
@@ -29,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($user = $result->fetch_assoc()) {
                 if (password_verify($password, $user['password'])) {
-                    // Prevent session fixation
+                    // Only regenerate session ID upon successful auth
                     session_regenerate_id(true);
 
                     $_SESSION['user_id'] = $user['id'];
@@ -47,7 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Render HTML
+// Generate/fetch CSRF token AFTER POST verification check
+$csrf_token = generate_csrf_token();
+
+// Render HTML header after all processing/redirects
 include __DIR__ . '/header.php';
 ?>
 

@@ -1,54 +1,33 @@
 <?php
-require_once __DIR__ . '/functions.php';
-require_once __DIR__ . '/database.php';
+include __DIR__ . '/header.php';
+$db = Database::getConnection();
 
 $error = '';
-
-// 1. Fetch/Initialize CSRF token FIRST
-$csrf_token = generate_csrf_token();
-
-// 2. Process POST Request
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $submitted_token = $_POST['csrf_token'] ?? '';
+    $email = trim($_POST['email'] ?? '');
+    $password = trim($_POST['password'] ?? '');
 
-    if (!verify_csrf_token($submitted_token)) {
-        $error = "Invalid security token. Please clear your cookies and try again.";
-    } else {
-        $email = trim($_POST['email'] ?? '');
-        $password = trim($_POST['password'] ?? '');
+    if (!empty($email) && !empty($password)) {
+        $stmt = $db->prepare("SELECT id, name, password, role FROM users WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
 
-        if (!empty($email) && !empty($password)) {
-            $db = Database::getConnection();
-            $stmt = $db->prepare("SELECT id, name, password, role FROM users WHERE email = ?");
-            $stmt->bind_param("s", $email);
-            $stmt->execute();
-            $result = $stmt->get_result();
+        if ($user = $result->fetch_assoc()) {
+            if (password_verify($password, $user['password'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['user_name'] = $user['name'];
+                $_SESSION['role'] = $user['role'];
 
-            if ($user = $result->fetch_assoc()) {
-                if (password_verify($password, $user['password'])) {
-                    // Regenerate session ID and retain user data
-                    session_regenerate_id(true);
-
-                    $_SESSION['user_id'] = $user['id'];
-                    $_SESSION['user_name'] = $user['name'];
-                    $_SESSION['role'] = $user['role'];
-
-                    // Clear CSRF token after successful login
-                    unset($_SESSION['csrf_token']);
-
-                    header("Location: index.php");
-                    exit();
-                }
+                header("Location: index.php");
+                exit();
             }
-            $error = "Invalid email address or password.";
-        } else {
-            $error = "Please fill in all fields.";
         }
+        $error = "Invalid email address or password.";
+    } else {
+        $error = "Please fill in all fields.";
     }
 }
-
-// 3. Render Page View
-include __DIR__ . '/header.php';
 ?>
 
 <div class="container mt-4" style="max-width: 500px;">
@@ -66,13 +45,11 @@ include __DIR__ . '/header.php';
             <?php endif; ?>
 
             <form method="POST" action="login.php">
-                <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
-
                 <div class="mb-3">
                     <label class="form-label small fw-semibold text-secondary">Email Address</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light border-end-0"><i class="bi bi-envelope text-muted"></i></span>
-                        <input type="email" name="email" class="form-control border-start-0 bg-light" placeholder="student@tarumt.edu.my" value="<?= e($_POST['email'] ?? '') ?>" required>
+                        <input type="email" name="email" class="form-control border-start-0 bg-light" placeholder="student@tarumt.edu.my" required>
                     </div>
                 </div>
 

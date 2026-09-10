@@ -18,23 +18,41 @@ function generate_csrf_token(): string {
 /**
  * Validate CSRF Token
  */
-function verify_csrf_token(string $token): bool {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+function verify_csrf_token(?string $token): bool {
+    if (empty($token) || empty($_SESSION['csrf_token'])) {
+        return false;
+    }
+    return hash_equals($_SESSION['csrf_token'], $token);
 }
 
 /**
  * Fetch EC2 Instance Metadata (IMDSv2 Compatible with IMDSv1 Fallback)
  */
 function get_ec2_metadata(): array {
-    $context = stream_context_create(['http' => ['timeout' => 1]]);
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 1,
+            'ignore_errors' => true
+        ]
+    ]);
     
     // Attempt IMDSv2 Token
     $tokenHeader = @file_get_contents('http://169.254.169.254/latest/api/token', false, stream_context_create([
-        'http' => ['method' => 'PUT', 'header' => "X-aws-ec2-metadata-token-ttl-seconds: 60", 'timeout' => 1]
+        'http' => [
+            'method' => 'PUT', 
+            'header' => "X-aws-ec2-metadata-token-ttl-seconds: 60\r\n", 
+            'timeout' => 1
+        ]
     ]));
 
-    if ($tokenHeader) {
-        $opts = ['http' => ['header' => "X-aws-ec2-metadata-token: $tokenHeader", 'timeout' => 1]];
+    if ($tokenHeader !== false && !empty($tokenHeader)) {
+        $opts = [
+            'http' => [
+                'method' => 'GET',
+                'header' => "X-aws-ec2-metadata-token: {$tokenHeader}\r\n", 
+                'timeout' => 1
+            ]
+        ];
         $ctx = stream_context_create($opts);
         $instance_id = @file_get_contents('http://169.254.169.254/latest/meta-data/instance-id', false, $ctx);
         $az = @file_get_contents('http://169.254.169.254/latest/meta-data/placement/availability-zone', false, $ctx);
@@ -51,8 +69,8 @@ function get_ec2_metadata(): array {
 }
 
 /**
- * Helper to escape output
+ * Helper to escape output (Handles null safely)
  */
-function e(string $value): string {
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+function e(?string $value): string {
+    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
 }
